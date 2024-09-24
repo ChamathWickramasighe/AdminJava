@@ -3,7 +3,6 @@ package views;
 import db.DBConnection;
 import java.awt.BorderLayout;
 import java.awt.Component;
-import java.awt.GridLayout;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
@@ -11,6 +10,7 @@ import javax.swing.table.TableCellEditor;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.sql.*;
+import java.util.EventObject;
 
 public class AppointmentsTab extends JPanel {
 
@@ -21,13 +21,9 @@ public class AppointmentsTab extends JPanel {
         setLayout(new BorderLayout());
 
         // Table setup
-        String[] columnNames = {"Patient ID", "Doctor ID", "Appointment Date", "Status", "Action"};
+        String[] columnNames = {"Appointment ID", "Patient ID", "Doctor ID", "Appointment Date", "Status", "Approve", "Reject"};
         tableModel = new DefaultTableModel(columnNames, 0);
         appointmentsTable = new JTable(tableModel);
-
-        // Custom renderer and editor for the "Action" column to display the button
-        appointmentsTable.getColumn("Action").setCellRenderer(new ButtonRenderer());
-        appointmentsTable.getColumn("Action").setCellEditor(new ButtonEditor(new JCheckBox()));
 
         // Fetch appointments data
         fetchAppointmentsData();
@@ -35,22 +31,28 @@ public class AppointmentsTab extends JPanel {
         // Add table to JScrollPane and then to panel
         JScrollPane scrollPane = new JScrollPane(appointmentsTable);
         add(scrollPane, BorderLayout.CENTER);
+
+        // Set custom renderer and editor for the Approve and Reject columns
+        appointmentsTable.getColumn("Approve").setCellRenderer(new ButtonRenderer());
+        appointmentsTable.getColumn("Approve").setCellEditor(new ButtonEditor(new JCheckBox(), "approve"));
+        appointmentsTable.getColumn("Reject").setCellRenderer(new ButtonRenderer());
+        appointmentsTable.getColumn("Reject").setCellEditor(new ButtonEditor(new JCheckBox(), "reject"));
     }
 
     private void fetchAppointmentsData() {
-        // Assuming you have a method to get a connection to your database
         try (Connection connection = DBConnection.getConnection();
              Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT patient_id, doctor_id, date, status, symptoms, description FROM appointment")) {
+             ResultSet resultSet = statement.executeQuery("SELECT id, patient_id, doctor_id, date, status FROM appointment")) {
 
             while (resultSet.next()) {
+                String appointmentId = resultSet.getString("id");
                 String patientId = resultSet.getString("patient_id");
                 String doctorId = resultSet.getString("doctor_id");
                 String appointmentDate = resultSet.getString("date");
                 String status = resultSet.getString("status");
 
-                // Add data to the table model, the "View" button is created in the renderer/editor
-                tableModel.addRow(new Object[]{patientId, doctorId, appointmentDate, status, "View"});
+                // Add data to the table model
+                tableModel.addRow(new Object[]{appointmentId, patientId, doctorId, appointmentDate, status, "Approve", "Reject"});
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -58,98 +60,87 @@ public class AppointmentsTab extends JPanel {
         }
     }
 
-    private void showAppointmentDetails(String patientId, String doctorId, String appointmentDate, String status, String symptoms, String description) {
-        // Create a modal dialog to show appointment details
-        JDialog dialog = new JDialog();
-        dialog.setTitle("Appointment Details");
-        dialog.setModal(true);
-        dialog.setSize(300, 300);
-        dialog.setLayout(new GridLayout(0, 1));
-
-        dialog.add(new JLabel("Patient ID: " + patientId));
-        dialog.add(new JLabel("Doctor ID: " + doctorId));
-        dialog.add(new JLabel("Appointment Date: " + appointmentDate));
-        dialog.add(new JLabel("Status: " + status));
-        dialog.add(new JLabel("Symptoms: " + symptoms));
-        dialog.add(new JLabel("Description: " + description));
-
-        // Add approve and cancel buttons
-        JRadioButton approveButton = new JRadioButton("Approve");
-        JRadioButton cancelButton = new JRadioButton("Cancel");
-        ButtonGroup group = new ButtonGroup();
-        group.add(approveButton);
-        group.add(cancelButton);
-        dialog.add(approveButton);
-        dialog.add(cancelButton);
-
-        JButton updateButton = new JButton("Update");
-        updateButton.addActionListener(e -> {
-            // Update status in the database according to selected option
-            String newStatus = approveButton.isSelected() ? "approve" : "cancel";
-            updateAppointmentStatus(patientId, newStatus);
-            dialog.dispose();
-        });
-        dialog.add(updateButton);
-
-        JButton closeButton = new JButton("Close");
-        closeButton.addActionListener(e -> dialog.dispose());
-        dialog.add(closeButton);
-
-        dialog.setVisible(true);
-    }
-
     private void updateAppointmentStatus(String patientId, String newStatus) {
-        // Update the status in the database
         try (Connection connection = DBConnection.getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement("UPDATE appointment SET status = ? WHERE patient_id = ?")) {
+             PreparedStatement ps = connection.prepareStatement("UPDATE appointment SET status = ? WHERE id = ?")) {
 
-            preparedStatement.setString(1, newStatus);
-            preparedStatement.setString(2, patientId);
-            preparedStatement.executeUpdate();
+            ps.setString(1, newStatus);
+            ps.setString(2, patientId);
+            int rowsAffected = ps.executeUpdate();
 
-            JOptionPane.showMessageDialog(this, "Status updated to: " + newStatus);
+            if (rowsAffected > 0) {
+                JOptionPane.showMessageDialog(this, "Appointment status updated to: " + newStatus);
+                refreshTable();  // Refresh the table after updating the status
+            } else {
+                JOptionPane.showMessageDialog(this, "Failed to update status for patient ID: " + patientId);
+            }
+
         } catch (SQLException e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(this, "Error updating status: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    // Custom renderer class to display buttons in the "Action" column
-    class ButtonRenderer extends JButton implements TableCellRenderer {
+    // Refreshes the table to display updated status
+    private void refreshTable() {
+        tableModel.setRowCount(0);  // Clear the existing data
+        fetchAppointmentsData();    // Fetch updated data
+    }
+
+    // Custom renderer for the Approve and Reject buttons
+    private class ButtonRenderer extends JButton implements TableCellRenderer {
+
         public ButtonRenderer() {
             setOpaque(true);
         }
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-            setText((value == null) ? "View" : value.toString());
+            setText((value == null) ? "" : value.toString());
             return this;
         }
     }
 
-    // Custom editor class to handle button clicks in the "Action" column
-    class ButtonEditor extends DefaultCellEditor {
+    // Custom editor for the Approve and Reject buttons
+    private class ButtonEditor extends DefaultCellEditor {
         private String label;
+        private String status;
+        private String patientId;
 
-        public ButtonEditor(JCheckBox checkBox) {
+        public ButtonEditor(JCheckBox checkBox, String status) {
             super(checkBox);
+            this.status = status;
         }
 
         @Override
         public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
-            label = (value == null) ? "View" : value.toString();
+            label = (value == null) ? "" : value.toString();
+            patientId = table.getValueAt(row, 0).toString();  // Get the patient ID from the row
             JButton button = new JButton(label);
-            button.addActionListener(e -> {
-                String patientId = table.getValueAt(row, 0).toString();
-                String doctorId = table.getValueAt(row, 1).toString();
-                String appointmentDate = table.getValueAt(row, 2).toString();
-                String status = table.getValueAt(row, 3).toString();
-                String symptoms = ""; // Fetch the symptoms
-                String description = ""; // Fetch the description
-                showAppointmentDetails(patientId, doctorId, appointmentDate, status, symptoms, description);
-                fireEditingStopped();
+            button.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    updateAppointmentStatus(patientId, status);  // Update the status based on the button clicked
+                    fireEditingStopped();  // To stop editing the cell after the button click
+                }
             });
             return button;
+        }
+
+        @Override
+        public Object getCellEditorValue() {
+            return label;
+        }
+
+        @Override
+        public boolean stopCellEditing() {
+            fireEditingStopped();
+            return super.stopCellEditing();
+        }
+
+        @Override
+        public boolean isCellEditable(EventObject e) {
+            return true;
         }
     }
 }
