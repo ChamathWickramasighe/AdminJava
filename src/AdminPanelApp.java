@@ -57,21 +57,6 @@ public class AdminPanelApp extends JFrame {
         bodyPanel.add(new PrescriptionsTab(), "Prescriptions");
         bodyPanel.add(new DrugsTab(), "Drugs");
 
-        // Placeholder panels for other tabs (we'll add these in future steps)
-//        JPanel appointmentsPanel = new JPanel();
-//        appointmentsPanel.add(new JLabel("Appointments"));
-
-//        JPanel prescriptionsPanel = new JPanel();
-//        prescriptionsPanel.add(new JLabel("Prescriptions"));
-//
-//        JPanel drugsPanel = new JPanel();
-//        drugsPanel.add(new JLabel("Drugs"));
-
-        // Add placeholders to the CardLayout
-        //bodyPanel.add(appointmentsPanel, "Appointments");
-        //bodyPanel.add(prescriptionsPanel, "Prescriptions");
-        //bodyPanel.add(drugsPanel, "Drugs");
-
         // Show the JFrame
         setVisible(true);
     }
@@ -83,9 +68,5 @@ public class AdminPanelApp extends JFrame {
             String command = e.getActionCommand();
             cardLayout.show(bodyPanel, command);
         }
-    }
-
-    public static void main(String[] args) {
-        new AdminPanelApp();
     }
 }
